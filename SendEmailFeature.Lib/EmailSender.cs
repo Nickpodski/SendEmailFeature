@@ -11,7 +11,7 @@ public class EmailSender(IConfiguration configuration)
     private readonly IConfiguration _configuration = configuration;
 
     private string _senderEmail =>
-        _configuration["senderMail"]
+        _configuration["senderEmail"]
         ?? throw new NullReferenceException("Missing Sender Email in Configuration");
 
     private string _host =>
@@ -36,13 +36,50 @@ public class EmailSender(IConfiguration configuration)
             Body = "Hello, this is a test email sent from a C# application using Gmail SMTP."
         };
 
+    private static bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+
+        try
+        {
+            email = Regex.Replace(
+                email,
+                @"(@)(.+)$",
+                DomainMapper,
+                RegexOptions.None,
+                TimeSpan.FromMilliseconds(200)
+            );
+
+            static string DomainMapper(Match match)
+            {
+                var idn = new IdnMapping();
+                var domainName = idn.GetAscii(match.Groups[2].Value);
+
+                return match.Groups[1].Value + domainName;
+            }
+
+            return Regex.IsMatch(
+                email,
+                @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+                RegexOptions.IgnoreCase,
+                TimeSpan.FromMilliseconds(250)
+            );
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private SmtpClient GetSmtpClient() =>
         new()
         {
             Host = _host,
             Port = _port,
+            UseDefaultCredentials = false,
             Credentials = new NetworkCredential(_senderEmail, _senderPassword),
-            EnableSsl = true
+            EnableSsl = true,
         };
 
     public async Task TrySendAsync(string toAddress)
@@ -66,58 +103,6 @@ public class EmailSender(IConfiguration configuration)
                 if (tries == 3)
                     throw new(ex.Message);
             }
-        }
-    }
-
-    private static bool IsValidEmail(string email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-            return false;
-
-        try
-        {
-            // Normalize the domain
-            email = Regex.Replace(
-                email,
-                @"(@)(.+)$",
-                DomainMapper,
-                RegexOptions.None,
-                TimeSpan.FromMilliseconds(200)
-            );
-
-            // Examines the domain part of the email and normalizes it.
-            string DomainMapper(Match match)
-            {
-                // Use IdnMapping class to convert Unicode domain names.
-                var idn = new IdnMapping();
-
-                // Pull out and process domain name (throws ArgumentException on invalid)
-                string domainName = idn.GetAscii(match.Groups[2].Value);
-
-                return match.Groups[1].Value + domainName;
-            }
-        }
-        catch (RegexMatchTimeoutException e)
-        {
-            return false;
-        }
-        catch (ArgumentException e)
-        {
-            return false;
-        }
-
-        try
-        {
-            return Regex.IsMatch(
-                email,
-                @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
-                RegexOptions.IgnoreCase,
-                TimeSpan.FromMilliseconds(250)
-            );
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            return false;
         }
     }
 }

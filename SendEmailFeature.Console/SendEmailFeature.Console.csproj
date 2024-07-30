@@ -17,4 +17,10 @@
     <ProjectReference Include="..\SendEmailFeature.Lib\SendEmailFeature.Lib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="appsettings.Development.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

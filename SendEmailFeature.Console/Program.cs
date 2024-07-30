@@ -3,14 +3,20 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SendEmailFeature.Lib;
 
-var host = Host.CreateApplicationBuilder();
-host.Configuration.AddJsonFile("appsettings.Development.json", true, true);
+var host = Host.CreateDefaultBuilder();
+host.ConfigureAppConfiguration((hostingContext, configuration) =>
+{
+    configuration.Sources.Clear();
+    configuration.AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true);
+});
 
-host.Services.AddTransient<EmailSender>();
+host.ConfigureServices((context, services) =>
+{
+    services.AddTransient<EmailSender>();
+});
 
 var app = host.Build();
 
-var emailSender = app.Services.GetService<EmailSender>();
+var emailSender = app.Services.GetService<EmailSender>() ?? throw new NullReferenceException("Cannot not find email service");
 
-emailSender?.TrySendAsync("nickpodski@gmail.com");
-
+await emailSender.TrySendAsync("nickpodski@gmail.com");
