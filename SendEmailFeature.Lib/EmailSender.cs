@@ -3,12 +3,14 @@ using System.Net;
 using System.Net.Mail;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace SendEmailFeature.Lib;
 
-public class EmailSender(IConfiguration configuration)
+public class EmailSender(IConfiguration configuration, ILogger<EmailSender> logger)
 {
     private readonly IConfiguration _configuration = configuration;
+    private readonly ILogger<EmailSender> _logger = logger;
 
     private string _senderEmail =>
         _configuration["senderEmail"]
@@ -89,17 +91,40 @@ public class EmailSender(IConfiguration configuration)
             throw new NullReferenceException("Not Valid Email Address");
         }
 
+        var mailMessage = GetMessage(toAddress);
+        var today = DateTime.Today.ToShortDateString();
+
         for (var tries = 1; tries <= 3; tries++)
         {
             try
             {
-                await GetSmtpClient().SendMailAsync(GetMessage(toAddress));
-                Console.WriteLine($"Message sent successfully to: {toAddress}.");
+                await GetSmtpClient().SendMailAsync(mailMessage);
+                _logger.LogInformation(
+                    "Message sent successfully! "
+                        + "Recipient: {toAddress}, "
+                        + "Sender: {_senderEmail}, "
+                        + "Subject: {mailMessage.Subject}, "
+                        + "Body: {mailMessage.Body}, "
+                        + "Date: {today}, "
+                        + "Attempt: {tries}",
+                    [toAddress, _senderEmail, mailMessage.Subject, mailMessage.Body, today, tries]
+                );
+
                 break;
             }
             catch (SmtpException ex)
             {
-                Console.WriteLine($"Message failed to send attempt: {tries}");
+                _logger.LogInformation(
+                    "Message failed to send! "
+                        + "Recipient: {toAddress}, "
+                        + "Sender: {_senderEmail}, "
+                        + "Subject: {mailMessage.Subject}, "
+                        + "Body: {mailMessage.Body}, "
+                        + "Date: {today}, "
+                        + "Attempt: {tries}",
+                    [toAddress, _senderEmail, mailMessage.Subject, mailMessage.Body, today, tries]
+                );
+
                 if (tries == 3)
                     throw new(ex.Message);
             }

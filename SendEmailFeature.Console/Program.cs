@@ -19,4 +19,11 @@ var app = host.Build();
 
 var emailSender = app.Services.GetService<EmailSender>() ?? throw new NullReferenceException("Cannot not find email service");
 
-await emailSender.TrySendAsync("nickpodski@gmail.com");
+var email = string.Empty;
+
+while (string.IsNullOrEmpty(email)) {
+    Console.WriteLine("Enter Email:");
+    email = Console.ReadLine();
+}
+
+await emailSender.TrySendAsync(email);
