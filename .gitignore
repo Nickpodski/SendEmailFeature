@@ -3,6 +3,9 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+appsettings.*.json
+logs.txt
+
 # dotenv files
 .env
 
