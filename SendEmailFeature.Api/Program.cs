@@ -1,10 +1,13 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using SendEmailFeature.Lib;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddTransient<EmailSender>();
-var listener = new TextWriterTraceListener(@"C:\Users\Nickp\git\SendEmailFeature\logs.txt");
+var root = GetProjectDirectory();
+
+var listener = new TextWriterTraceListener(@$"{root}\logs.txt");
 var sourceSwitch = new SourceSwitch("sourceSwitch", "Logging Sample")
 {
     Level = SourceLevels.Information
@@ -22,3 +25,6 @@ app.MapGet("/{email}", async (string email) => {
 });
 
 app.Run();
+
+static string? GetProjectDirectory([CallerFilePath] string sourceFilePath = "") 
+    => Path.GetDirectoryName(sourceFilePath);
