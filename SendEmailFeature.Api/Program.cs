@@ -20,8 +20,9 @@ var emailSender =
     app.Services.GetService<EmailSender>()
     ?? throw new NullReferenceException("Cannot not find email service");
 app.MapGet("/{email}", async (string email) => {
-    await emailSender.TrySendAsync(email);
+    var result = await emailSender.TrySendAsync(email);
     listener.Flush();
+    return result;
 });
 
 app.Run();

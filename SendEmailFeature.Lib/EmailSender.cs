@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Mail;
 using System.Text.RegularExpressions;
+using LanguageExt.Common;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -10,44 +11,30 @@ namespace SendEmailFeature.Lib;
 public class EmailSender(IConfiguration configuration, ILogger<EmailSender> logger)
 {
     private readonly IConfiguration _configuration = configuration;
+    private Validation<Error, EmailConfiguration> _emailConfiguration 
+        => _configuration.ToEmailConfiguration();
     private readonly ILogger<EmailSender> _logger = logger;
 
-    private string _senderEmail =>
-        _configuration["EmailSettings:senderEmail"]
-        ?? throw new NullReferenceException("Missing Sender Email in Configuration");
+    private Validation<Error, MailAddress> GetSender() => _emailConfiguration.Select(config => 
+        new MailAddress(config.SenderEmail, config.SenderName));
 
-    private string _host =>
-        _configuration["EmailSettings:host"]
-        ?? throw new NullReferenceException("Missing Host in Configuration");
-
-    private int _port =>
-        int.Parse(
-            _configuration["EmailSettings:port"]
-                ?? throw new NullReferenceException("Missing Port in Configuration")
-        );
-
-    private string _senderPassword =>
-        _configuration["EmailSettings:senderPassword"]
-        ?? throw new NullReferenceException("Missing Sender Password in Configuration");
-
-    private MailAddress GetSender() =>
-        new(_senderEmail, _configuration["EmailSettings:senderName"]);
-
-    private MailMessage GetMessage(string toAddress) =>
-        new(GetSender(), new(toAddress))
+    private Validation<Error, MailMessage> GetMessage(string toAddress) => GetSender().Select(
+        sender => new MailMessage(sender, new(toAddress))
         {
             Subject = "Testing Gmail SMTP in C#",
             Body = "Hello, this is a test email sent from a C# application using Gmail SMTP."
-        };
+        }
+    );
 
     private static bool IsValidEmail(string email)
     {
         if (string.IsNullOrWhiteSpace(email))
             return false;
 
-        try
+        var isValid = Try(() => 
         {
-            email = Regex.Replace(
+
+            var replacedEmail = Regex.Replace(
                 email,
                 @"(@)(.+)$",
                 DomainMapper,
@@ -64,60 +51,90 @@ public class EmailSender(IConfiguration configuration, ILogger<EmailSender> logg
             }
 
             return Regex.IsMatch(
-                email,
+                replacedEmail,
                 @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
                 RegexOptions.IgnoreCase,
                 TimeSpan.FromMilliseconds(250)
             );
-        }
-        catch (Exception)
-        {
-            return false;
-        }
+        });
+
+        return isValid.IfFail(false);
     }
 
-    private SmtpClient GetSmtpClient() =>
-        new()
+    private Validation<Error, SmtpClient> GetSmtpClient() =>
+        from emailConfiguration in _emailConfiguration
+        select new SmtpClient
         {
-            Host = _host,
-            Port = _port,
+            Host = emailConfiguration.Host,
+            Port = emailConfiguration.Port,
             UseDefaultCredentials = false,
-            Credentials = new NetworkCredential(_senderEmail, _senderPassword),
+            Credentials = new NetworkCredential(
+                emailConfiguration.SenderEmail, emailConfiguration.SenderPassword
+            ),
             EnableSsl = true,
         };
 
-    public async Task TrySendAsync(string toAddress)
-    {
-        if (!IsValidEmail(toAddress))
+    private async Task<Validation<Error, Unit>> AttemptSend(
+        SmtpClient client,
+        MailMessage message,
+        string logInfo,
+        int tries
+    )
+    { 
+        var attempt = await TryAsync(async () => 
         {
-            throw new NullReferenceException("Not Valid Email Address");
-        }
+            await client.SendMailAsync(message);
+            _logger.LogInformation($"Message sent successfully! {logInfo} \nAttempt: {tries}");
+            return unit;
+        });
+
+        var returnValue = attempt
+            .ToValidation(ex => 
+            {
+                _logger.LogInformation($"Message failed to send! {logInfo} \nAttempt: {tries}");
+                return Error.New(ex.ToString());
+            });
+
+        return returnValue;
+    }
+    public async Task<Validation<Error, Unit>> TrySendAsync(string toAddress)
+    {
+        if (!IsValidEmail(toAddress)) return Error.New("Not Valid Email Address");
 
         var mailMessage = GetMessage(toAddress);
         var today = DateTime.Today.ToShortDateString();
         var logInfo =
-            $"\nRecipient: {toAddress}, "
-            + $"\nSender: {_senderEmail}, "
-            + $"\nSubject: {mailMessage.Subject}, "
-            + $"\nBody: {mailMessage.Body}, "
-            + $"\nDate: {today}, ";
+            from config in _emailConfiguration
+            from message in mailMessage
+            select 
+                $"\nRecipient: {toAddress}, "
+                + $"\nSender: {config.SenderEmail}, "
+                + $"\nSubject: {message.Subject}, "
+                + $"\nBody: {message.Body}, "
+                + $"\nDate: {today}, ";
 
         for (var tries = 1; tries <= 3; tries++)
         {
-            try
-            {
-                await GetSmtpClient().SendMailAsync(mailMessage);
-                _logger.LogInformation($"Message sent successfully! {logInfo} \nAttempt: {tries}");
+            var sendTask =
+                from client in GetSmtpClient()
+                from message in mailMessage
+                from info in logInfo
+                select AttemptSend(client, message, info, tries);
+            var awaitedTask = await sendTask.Match(
+                async (task) =>
+                {
+                    return await task;
+                },
+                err => 
+                {
+                    return Task.FromResult(Fail<Error, Unit>(err));
+                }
+            );
 
-                break;
-            }
-            catch (SmtpException ex)
-            {
-                _logger.LogInformation($"Message failed to send! {logInfo} \nAttempt: {tries}");
-
-                if (tries == 3)
-                    throw new(ex.Message);
-            }
+            if(awaitedTask.IsSuccess) break;
+            if(tries == 3) return awaitedTask;
         }
+
+        return unit;
     }
 }

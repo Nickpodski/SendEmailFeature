@@ -42,7 +42,7 @@ while (string.IsNullOrEmpty(email)) {
     email = Console.ReadLine();
 }
 
-await emailSender.TrySendAsync(email);
+Console.WriteLine(await emailSender.TrySendAsync(email));
 listener.Flush();
 
 static string? GetProjectDirectory([CallerFilePath] string sourceFilePath = "") 
