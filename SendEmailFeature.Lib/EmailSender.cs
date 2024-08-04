@@ -96,24 +96,24 @@ public class EmailSender(IConfiguration configuration, ILogger<EmailSender> logg
         var mailMessage = GetMessage(toAddress);
         var today = DateTime.Today.ToShortDateString();
         var logInfo =
-            $"Recipient: {toAddress}, "
-            + $"Sender: {_senderEmail}, "
-            + $"Subject: {mailMessage.Subject}, "
-            + $"Body: {mailMessage.Body}, "
-            + $"Date: {today}, ";
+            $"\nRecipient: {toAddress}, "
+            + $"\nSender: {_senderEmail}, "
+            + $"\nSubject: {mailMessage.Subject}, "
+            + $"\nBody: {mailMessage.Body}, "
+            + $"\nDate: {today}, ";
 
         for (var tries = 1; tries <= 3; tries++)
         {
             try
             {
                 await GetSmtpClient().SendMailAsync(mailMessage);
-                _logger.LogInformation($"Message sent successfully! {logInfo} Attempt: {tries}");
+                _logger.LogInformation($"Message sent successfully! {logInfo} \nAttempt: {tries}");
 
                 break;
             }
             catch (SmtpException ex)
             {
-                _logger.LogInformation($"Message failed to send! {logInfo} Attempt: {tries}");
+                _logger.LogInformation($"Message failed to send! {logInfo} \nAttempt: {tries}");
 
                 if (tries == 3)
                     throw new(ex.Message);
