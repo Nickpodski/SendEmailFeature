@@ -13,23 +13,25 @@ public class EmailSender(IConfiguration configuration, ILogger<EmailSender> logg
     private readonly ILogger<EmailSender> _logger = logger;
 
     private string _senderEmail =>
-        _configuration["senderEmail"]
+        _configuration["EmailSettings:senderEmail"]
         ?? throw new NullReferenceException("Missing Sender Email in Configuration");
 
     private string _host =>
-        _configuration["host"] ?? throw new NullReferenceException("Missing Host in Configuration");
+        _configuration["EmailSettings:host"]
+        ?? throw new NullReferenceException("Missing Host in Configuration");
 
     private int _port =>
         int.Parse(
-            _configuration["port"]
+            _configuration["EmailSettings:port"]
                 ?? throw new NullReferenceException("Missing Port in Configuration")
         );
 
     private string _senderPassword =>
-        _configuration["senderPassword"]
+        _configuration["EmailSettings:senderPassword"]
         ?? throw new NullReferenceException("Missing Sender Password in Configuration");
 
-    private MailAddress GetSender() => new(_senderEmail, _configuration["senderName"]);
+    private MailAddress GetSender() =>
+        new(_senderEmail, _configuration["EmailSettings:senderName"]);
 
     private MailMessage GetMessage(string toAddress) =>
         new(GetSender(), new(toAddress))
@@ -93,37 +95,25 @@ public class EmailSender(IConfiguration configuration, ILogger<EmailSender> logg
 
         var mailMessage = GetMessage(toAddress);
         var today = DateTime.Today.ToShortDateString();
+        var logInfo =
+            $"Recipient: {toAddress}, "
+            + $"Sender: {_senderEmail}, "
+            + $"Subject: {mailMessage.Subject}, "
+            + $"Body: {mailMessage.Body}, "
+            + $"Date: {today}, ";
 
         for (var tries = 1; tries <= 3; tries++)
         {
             try
             {
                 await GetSmtpClient().SendMailAsync(mailMessage);
-                _logger.LogInformation(
-                    "Message sent successfully! "
-                        + "Recipient: {toAddress}, "
-                        + "Sender: {_senderEmail}, "
-                        + "Subject: {mailMessage.Subject}, "
-                        + "Body: {mailMessage.Body}, "
-                        + "Date: {today}, "
-                        + "Attempt: {tries}",
-                    [toAddress, _senderEmail, mailMessage.Subject, mailMessage.Body, today, tries]
-                );
+                _logger.LogInformation($"Message sent successfully! {logInfo} Attempt: {tries}");
 
                 break;
             }
             catch (SmtpException ex)
             {
-                _logger.LogInformation(
-                    "Message failed to send! "
-                        + "Recipient: {toAddress}, "
-                        + "Sender: {_senderEmail}, "
-                        + "Subject: {mailMessage.Subject}, "
-                        + "Body: {mailMessage.Body}, "
-                        + "Date: {today}, "
-                        + "Attempt: {tries}",
-                    [toAddress, _senderEmail, mailMessage.Subject, mailMessage.Body, today, tries]
-                );
+                _logger.LogInformation($"Message failed to send! {logInfo} Attempt: {tries}");
 
                 if (tries == 3)
                     throw new(ex.Message);
